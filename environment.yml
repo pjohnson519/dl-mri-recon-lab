@@ -1,0 +1,18 @@
+name: varnet
+channels:
+  - pytorch
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - torch==2.1.0
+    - numpy==1.26.4
+    - h5py==3.16.0
+    - pandas==3.0.1
+    - pyyaml==6.0.3
+    - matplotlib==3.10.8
+    - scikit-image==0.26.0
+    - scipy==1.17.1
+    - pillow==12.1.1
+    - jupyter
