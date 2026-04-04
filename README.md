@@ -4,31 +4,58 @@ A teaching lab on learned MRI reconstruction using a simplified [End-to-End VarN
 
 ## Quick start
 
-### 1. Get an interactive GPU node
+You will need **two terminal windows** on your laptop.
+
+### Terminal 1 — SSH into the cluster and get a GPU
 
 ```bash
-# Option A — radiology partition (if you have access):
+# Step 1: SSH into BigPurple
+ssh YOUR_NETID@bigpurple.nyumc.org
+
+# Step 2: Clone the repo (first time only)
+module load git
+git clone https://github.com/pjohnson519/dl-mri-recon-lab.git
+cd dl-mri-recon-lab
+
+# Step 3: Get an interactive GPU node
+# Option A — a100_dev (default for most students):
+srun --partition=a100_dev --gres=gpu:1 --cpus-per-task=8 --mem=32G --time=3:00:00 --pty /bin/bash
+
+# Option B — radiology partition (if you have access):
 srun --partition=radiology --gres=gpu:a100:1 --cpus-per-task=8 --mem=32G --time=3:00:00 --pty /bin/bash
 
-# Option B — a100_dev (default for most students):
-srun --partition=a100_dev --gres=gpu:1 --cpus-per-task=8 --mem=32G --time=3:00:00 --pty /bin/bash
+# Step 4: Note which compute node you landed on
+hostname
+# e.g. a100-4003
+
+# Step 5: Activate the environment and launch Jupyter
+export PATH="/gpfs/scratch/johnsp23/DLrecon_lab1/envs/varnet/bin:$PATH"
+cd ~/dl-mri-recon-lab
+jupyter notebook --no-browser --port=8888 --ip=0.0.0.0
 ```
 
-### 2. Activate the environment
+Jupyter will print a URL like:
+```
+http://127.0.0.1:8888/?token=abc123def456...
+```
+Keep this terminal open — copy that URL.
+
+### Terminal 2 — SSH tunnel from your laptop
+
+Open a **new terminal on your laptop** (not on the cluster) and create an SSH tunnel:
 
 ```bash
-source activate /gpfs/scratch/johnsp23/DLrecon_lab1/envs/varnet
+ssh -N -L 8888:COMPUTE_NODE:8888 YOUR_NETID@bigpurple.nyumc.org
 ```
 
-### 3. Clone the repo and launch Jupyter
+Replace `COMPUTE_NODE` with the hostname from Step 4 (e.g. `a100-4003`).
 
-```bash
-git clone <REPO_URL>
-cd dl-mri-recon-lab
-jupyter notebook --no-browser --port=8888
-```
+### Open the notebook
 
-Then open `notebooks/Lab1_VarNet.ipynb`.
+Open a browser on your laptop and paste the URL from Jupyter (the one with the token).
+Navigate to `notebooks/Lab1_VarNet.ipynb` and you're ready to go.
+
+Run cells with **Shift+Enter**.
 
 ## Shared data (scratch)
 
