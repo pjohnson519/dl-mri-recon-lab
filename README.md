@@ -44,9 +44,9 @@ Keep this terminal open — copy that URL.
 
 Open a **new terminal on your laptop** (not on the cluster) and create an SSH tunnel:
 
-```bash
+
 ssh -N -L 8888:COMPUTE_NODE:8888 YOUR_NETID@bigpurple.nyumc.org
-```
+
 
 Replace `COMPUTE_NODE` with the hostname from Step 4 (e.g. `a100-4003`).
 
