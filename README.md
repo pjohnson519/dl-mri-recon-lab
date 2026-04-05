@@ -29,15 +29,15 @@ hostname
 # e.g. a100-4003
 
 # Step 5: Activate the environment and launch Jupyter
-export PATH="/gpfs/scratch/johnsp23/DLrecon_lab1/envs/varnet/bin:$PATH"
+conda activate /gpfs/scratch/johnsp23/DLrecon_lab1/envs/varnet
 cd ~/dl-mri-recon-lab
 jupyter notebook --no-browser --port=8888 --ip=0.0.0.0
-```
+
 
 Jupyter will print a URL like:
-```
+
 http://127.0.0.1:8888/?token=abc123def456...
-```
+
 Keep this terminal open — copy that URL.
 
 ### Terminal 2 — SSH tunnel from your laptop
