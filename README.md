@@ -10,7 +10,7 @@ You will need **two terminal windows** on your laptop.
 
 ```bash
 # Step 1: SSH into BigPurple
-ssh YOUR_NETID@bigpurple.nyumc.org
+ssh YOUR_KID@bigpurple.nyumc.org
 
 # Step 2: Clone the repo (first time only)
 module load git
@@ -45,7 +45,7 @@ Keep this terminal open — copy that URL.
 Open a **new terminal on your laptop** (not on the cluster) and create an SSH tunnel:
 
 
-ssh -N -L 8888:COMPUTE_NODE:8888 YOUR_NETID@bigpurple.nyumc.org
+ssh -N -L 8888:COMPUTE_NODE:8888 YOUR_KID@bigpurple.nyumc.org
 
 
 Replace `COMPUTE_NODE` with the hostname from Step 4 (e.g. `a100-4003`).
