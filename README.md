@@ -84,7 +84,8 @@ dl-mri-recon-lab/
 ├── notebooks/
 │   └── Lab1_VarNet.ipynb # <-- start here
 ├── scripts/
-│   └── train.py          # Training script (for homework)
+│   ├── train.py          # Training script (for homework)
+│   └── eval.py           # Standalone evaluation script
 ├── configs/
 │   ├── random_4x.yaml
 │   ├── random_4x_nodc.yaml
@@ -124,7 +125,26 @@ Setting `use_dc=False` freezes all DC weights at 0, converting the model to a pu
 
 ## Homework
 
-**Option A:** Create `configs/equispaced_4x.yaml`, train with `scripts/train.py`, evaluate, and compare SSIM to the random-trained model on equispaced masks.
+**Option A:** Create `configs/equispaced_4x.yaml`, train with `scripts/train.py`, evaluate with `scripts/eval.py`, and compare SSIM to the random-trained model on equispaced masks.
+
+```bash
+# Evaluate your trained model on the test set:
+python scripts/eval.py --checkpoint runs/equi4x/best.pt \
+    --data_path /gpfs/scratch/johnsp23/DLrecon_lab1/data/knee \
+    --split_csv /gpfs/scratch/johnsp23/DLrecon_lab1/data/fastMRI_paired_knee.csv
+
+# Compare: evaluate with a different mask type than what you trained on:
+python scripts/eval.py --checkpoint runs/equi4x/best.pt \
+    --data_path /gpfs/scratch/johnsp23/DLrecon_lab1/data/knee \
+    --split_csv /gpfs/scratch/johnsp23/DLrecon_lab1/data/fastMRI_paired_knee.csv \
+    --mask_type random
+
+# Save example figures:
+python scripts/eval.py --checkpoint runs/equi4x/best.pt \
+    --data_path /gpfs/scratch/johnsp23/DLrecon_lab1/data/knee \
+    --split_csv /gpfs/scratch/johnsp23/DLrecon_lab1/data/fastMRI_paired_knee.csv \
+    --save_figures figures/equi4x
+```
 
 **Option B (Advanced):** Extend the model to 3D using slice-unique random masks or shifted equispaced masks.
 
