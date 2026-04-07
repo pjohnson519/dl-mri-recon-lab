@@ -83,7 +83,7 @@ def evaluate(model, loader, device):
 
         for i in range(output.shape[0]):
             ssim_val = ssim_metric(output[i], target[i], max_value=max_values[i])
-            volume_ssims[fnames[i]].append(ssim_val)
+            volume_ssims[fnames[i]].append((slice_nums[i], ssim_val))
 
     return volume_ssims
 
@@ -154,6 +154,10 @@ def main():
                         help="Save example comparison figures to this directory.")
     parser.add_argument("--num_figures", type=int, default=4,
                         help="Number of example figures to save (default: 4).")
+    parser.add_argument("--skip_slices", type=int, default=4,
+                        help="Skip the first N slices per volume for SSIM "
+                             "stats (noisy edge slices). Default: 4. Set to 0 "
+                             "to include all slices.")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -183,21 +187,27 @@ def main():
         pin_memory=True,
     )
 
+    skip = args.skip_slices
+
     print(f"Checkpoint : {args.checkpoint}")
     print(f"Split      : {args.split} ({len(dataset)} slices)")
     print(f"Mask       : {mask_type} {cfg.get('accelerations', [4])}x")
+    print(f"Skip slices: first {skip} per volume")
     print(f"Device     : {device}")
     print()
 
     # Run evaluation
     volume_ssims = evaluate(model, loader, device)
 
-    # Per-volume results
+    # Per-volume results (skip first N slices per volume — mostly noise)
     all_ssims = []
     print(f"{'Volume':<45s}  {'Slices':>6s}  {'SSIM':>8s}")
     print("-" * 65)
     for fname in sorted(volume_ssims.keys()):
-        vals = volume_ssims[fname]
+        entries = volume_ssims[fname]
+        vals = [ssim for sl, ssim in entries if sl >= skip]
+        if not vals:
+            continue
         vol_mean = np.mean(vals)
         all_ssims.extend(vals)
         vol_name = Path(fname).stem

@@ -93,13 +93,16 @@ def train_epoch(model, loader, optimizer, loss_fn, device, grad_accum_steps=1):
     return total_loss / max(len(loader.dataset), 1)
 
 
+SKIP_SLICES = 4  # Skip first N slices per volume (noisy edge slices)
+
+
 @torch.no_grad()
 def val_epoch(model, loader, device):
     model.eval()
     ssim_total = 0.0
     n = 0
     for batch in loader:
-        masked_kspace, mask, target, max_values, _, _, num_lf = batch
+        masked_kspace, mask, target, max_values, _, slice_nums, num_lf = batch
         masked_kspace = masked_kspace.to(device)
         mask = mask.to(device)
         target = target.to(device)
@@ -107,6 +110,8 @@ def val_epoch(model, loader, device):
         output = model(masked_kspace, mask, num_low_frequencies=int(num_lf[0]))
 
         for i in range(output.shape[0]):
+            if slice_nums[i] < SKIP_SLICES:
+                continue
             ssim_total += ssim_metric(output[i], target[i], max_value=max_values[i])
             n += 1
 
