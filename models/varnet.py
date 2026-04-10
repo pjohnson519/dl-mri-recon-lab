@@ -53,6 +53,11 @@ class SensitivityModel(nn.Module):
     The ACS region is isolated, transformed to image space, refined by a
     NormUnet, then normalised to unit RSS so the maps can be used to
     combine / expand multi-coil images.
+
+    For multi-slice / multi-contrast inputs, sensitivity maps are estimated
+    and normalised independently for each group of ``num_coils`` physical
+    coils.  This avoids mixing spatial content from different slices or
+    contrasts during RSS normalisation.
     """
 
     def __init__(
@@ -62,9 +67,13 @@ class SensitivityModel(nn.Module):
         in_chans: int = 2,
         out_chans: int = 2,
         drop_prob: float = 0.0,
+        num_coils: int = 15,
+        num_groups: int = 1,
     ):
         super().__init__()
         self.norm_unet = NormUnet(chans, num_pools, in_chans, out_chans, drop_prob)
+        self.num_coils = num_coils
+        self.num_groups = num_groups
 
     def _chans_to_batch(self, x: torch.Tensor) -> Tuple[torch.Tensor, int]:
         b, c, h, w, comp = x.shape
@@ -76,7 +85,17 @@ class SensitivityModel(nn.Module):
         return x.view(batch_size, c, h, w, comp)
 
     def _divide_rss(self, x: torch.Tensor) -> torch.Tensor:
-        return x / (rss_complex(x, dim=1).unsqueeze(-1).unsqueeze(1) + 1e-8)
+        """Normalise to unit RSS within each coil group independently."""
+        if self.num_groups == 1:
+            return x / (rss_complex(x, dim=1).unsqueeze(-1).unsqueeze(1) + 1e-8)
+        b, c, h, w, comp = x.shape
+        nc = self.num_coils
+        # (B, G, nc, H, W, 2)
+        x = x.view(b, self.num_groups, nc, h, w, comp)
+        # RSS per group over coil dim → (B, G, 1, H, W, 1)
+        rss_val = rss_complex(x, dim=2).unsqueeze(-1).unsqueeze(2)
+        x = x / (rss_val + 1e-8)
+        return x.view(b, c, h, w, comp)
 
     def _get_acs_pad(
         self,
@@ -115,21 +134,47 @@ class VarNetBlock(nn.Module):
     Applies:
       1. Regulariser  (NormUnet in image space)
       2. Soft data consistency  (k-space domain)
+
+    For multi-group inputs (multi-slice / multi-contrast), sens_reduce
+    and sens_expand operate independently on each group of ``num_coils``
+    physical coils.  The U-Net regulariser sees one image per group,
+    enabling cross-slice / cross-contrast feature learning.
     """
 
-    def __init__(self, model: nn.Module, use_dc: bool = True):
+    def __init__(self, model: nn.Module, use_dc: bool = True,
+                 num_coils: int = 15, num_groups: int = 1):
         super().__init__()
         self.model = model
+        self.num_coils = num_coils
+        self.num_groups = num_groups
         if use_dc:
             self.dc_weight = nn.Parameter(torch.ones(1))
         else:
             self.dc_weight = nn.Parameter(torch.zeros(1), requires_grad=False)
 
     def _sens_expand(self, x: torch.Tensor, sens_maps: torch.Tensor) -> torch.Tensor:
-        return fft2c(complex_mul(x, sens_maps))
+        if self.num_groups == 1:
+            return fft2c(complex_mul(x, sens_maps))
+        b = x.shape[0]
+        nc, g = self.num_coils, self.num_groups
+        # x: (B, G, H, W, 2) → (B*G, 1, H, W, 2)
+        x = x.reshape(b * g, 1, *x.shape[2:])
+        s = sens_maps.reshape(b * g, nc, *sens_maps.shape[2:])
+        out = fft2c(complex_mul(x, s))  # (B*G, nc, H, W, 2)
+        return out.reshape(b, g * nc, *out.shape[2:])
 
     def _sens_reduce(self, x: torch.Tensor, sens_maps: torch.Tensor) -> torch.Tensor:
-        return complex_mul(ifft2c(x), complex_conj(sens_maps)).sum(dim=1, keepdim=True)
+        if self.num_groups == 1:
+            return complex_mul(ifft2c(x), complex_conj(sens_maps)).sum(dim=1, keepdim=True)
+        b = x.shape[0]
+        nc, g = self.num_coils, self.num_groups
+        # x: (B, G*nc, H, W, 2) → (B*G, nc, H, W, 2)
+        x = x.reshape(b * g, nc, *x.shape[2:])
+        s = sens_maps.reshape(b * g, nc, *sens_maps.shape[2:])
+        # Per-group: ifft, multiply by conj(sens), sum over coils → (B*G, 1, H, W, 2)
+        reduced = complex_mul(ifft2c(x), complex_conj(s)).sum(dim=1, keepdim=True)
+        # → (B, G, H, W, 2)
+        return reduced.reshape(b, g, *reduced.shape[2:])
 
     def forward(
         self,
@@ -186,10 +231,20 @@ class SimpleVarNet(nn.Module):
         self.num_coils = num_coils
         self.num_contrasts = num_contrasts
 
-        self.sens_net = SensitivityModel(chans=sens_chans, num_pools=sens_pools)
+        num_groups = num_input_slices * num_contrasts
 
+        self.sens_net = SensitivityModel(
+            chans=sens_chans, num_pools=sens_pools,
+            num_coils=num_coils, num_groups=num_groups,
+        )
+
+        # Cascade U-Nets see one image per group → in_chans = 2 * num_groups
+        cascade_chans = 2 * num_groups
         self.cascades = nn.ModuleList([
-            VarNetBlock(NormUnet(chans, pools), use_dc=use_dc)
+            VarNetBlock(
+                NormUnet(chans, pools, in_chans=cascade_chans, out_chans=cascade_chans),
+                use_dc=use_dc, num_coils=num_coils, num_groups=num_groups,
+            )
             for _ in range(num_cascades)
         ])
 

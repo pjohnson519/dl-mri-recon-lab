@@ -151,10 +151,14 @@ class NormUnet(nn.Module):
 
     def norm(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         b, c, h, w = x.shape
-        x = x.view(b, 2, c // 2 * h * w)
+        half = c // 2
+        x = x.view(b, 2, half * h * w)
         mean = x.mean(dim=2).view(b, 2, 1, 1)
         std = x.std(dim=2).view(b, 2, 1, 1)
         x = x.view(b, c, h, w)
+        # Expand to (b, c, 1, 1) so it broadcasts with multi-group channels
+        mean = mean.repeat_interleave(half, dim=1)
+        std = std.repeat_interleave(half, dim=1)
         return (x - mean) / (std + 1e-8), mean, std
 
     def unnorm(self, x: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torch.Tensor:
