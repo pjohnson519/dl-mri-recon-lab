@@ -57,6 +57,9 @@ def load_model(checkpoint_path, device, use_dc=None):
         sens_chans=cfg.get("sens_chans", 8),
         sens_pools=cfg.get("sens_pools", 4),
         use_dc=dc,
+        num_input_slices=cfg.get("num_input_slices", 1),
+        num_coils=cfg.get("num_coils", 15),
+        num_contrasts=cfg.get("num_contrasts", 1),
     )
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()

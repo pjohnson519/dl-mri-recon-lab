@@ -14,7 +14,7 @@ Each VarNetBlock:
        kspace <- kspace - dc_weight * (A*A^H*kspace - masked_kspace) - model_term
 """
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -152,13 +152,17 @@ class SimpleVarNet(nn.Module):
     Simplified End-to-End VarNet.
 
     Args:
-        num_cascades:   Number of unrolled gradient steps.
-        chans:          U-Net channels in each cascade (regulariser).
-        pools:          U-Net pool layers in each cascade.
-        sens_chans:     U-Net channels in the sensitivity model.
-        sens_pools:     U-Net pool layers in the sensitivity model.
-        use_dc:         If False, sets all DC weights to 0 and freezes them.
-        recon_size:     Spatial size of the output image (H, W).
+        num_cascades:    Number of unrolled gradient steps.
+        chans:           U-Net channels in each cascade (regulariser).
+        pools:           U-Net pool layers in each cascade.
+        sens_chans:      U-Net channels in the sensitivity model.
+        sens_pools:      U-Net pool layers in the sensitivity model.
+        use_dc:          If False, sets all DC weights to 0 and freezes them.
+        recon_size:      Spatial size of the output image (H, W).
+        num_input_slices: Number of adjacent slices per contrast (1 = single-slice).
+        num_coils:       Physical coils per slice (default 15).
+        num_contrasts:   Number of contrasts (1 = single, 2 = joint PD+PDFS).
+                         When >1, forward() returns a list of images, one per contrast.
     """
 
     def __init__(
@@ -172,9 +176,15 @@ class SimpleVarNet(nn.Module):
         learn_dc: bool = True,
         use_dc: bool = True,
         recon_size: Tuple[int, int] = (320, 320),
+        num_input_slices: int = 1,
+        num_coils: int = 15,
+        num_contrasts: int = 1,
     ):
         super().__init__()
         self.recon_size = recon_size
+        self.num_input_slices = num_input_slices
+        self.num_coils = num_coils
+        self.num_contrasts = num_contrasts
 
         self.sens_net = SensitivityModel(chans=sens_chans, num_pools=sens_pools)
 
@@ -190,18 +200,39 @@ class SimpleVarNet(nn.Module):
                 if not learn_dc:
                     block.dc_weight.requires_grad_(False)
 
+    def _extract_center_coils(self, kspace: torch.Tensor, contrast_idx: int = 0) -> torch.Tensor:
+        """Extract the center-slice coils for a given contrast from the full k-space."""
+        if self.num_input_slices == 1 and self.num_contrasts == 1:
+            return kspace
+        # Layout: [contrast_0_slice_0, ..., contrast_0_slice_N, contrast_1_slice_0, ...]
+        slices_per_contrast = self.num_input_slices * self.num_coils
+        center_slice_offset = (self.num_input_slices // 2) * self.num_coils
+        start = contrast_idx * slices_per_contrast + center_slice_offset
+        end = start + self.num_coils
+        return kspace[:, start:end]
+
     def forward(
         self,
         masked_kspace: torch.Tensor,
         mask: torch.Tensor,
         num_low_frequencies: Optional[int] = None,
-    ) -> torch.Tensor:
+    ) -> Union[torch.Tensor, List[torch.Tensor]]:
         sens_maps = self.sens_net(masked_kspace, mask, num_low_frequencies)
         kspace_pred = masked_kspace.clone()
 
         for cascade in self.cascades:
             kspace_pred = cascade(kspace_pred, masked_kspace, mask, sens_maps)
 
-        image = ifft2c(kspace_pred)
+        if self.num_contrasts > 1:
+            outputs = []
+            for c in range(self.num_contrasts):
+                kc = self._extract_center_coils(kspace_pred, contrast_idx=c)
+                img = ifft2c(kc)
+                img = complex_center_crop(img, self.recon_size)
+                outputs.append(rss(complex_abs(img), dim=1))
+            return outputs
+
+        kspace_out = self._extract_center_coils(kspace_pred, contrast_idx=0)
+        image = ifft2c(kspace_out)
         image = complex_center_crop(image, self.recon_size)
         return rss(complex_abs(image), dim=1)

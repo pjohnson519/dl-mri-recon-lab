@@ -31,7 +31,13 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from models.varnet import SimpleVarNet
-from utils.data import FastMRIKneeDataset, collate_fn
+from utils.data import (
+    FastMRIKneeDataset,
+    MultiSliceDataset,
+    PairedContrastDataset,
+    collate_fn,
+    paired_collate_fn,
+)
 from utils.metrics import SSIMLoss, ssim_metric
 
 
@@ -50,11 +56,14 @@ def build_model(cfg: dict) -> SimpleVarNet:
         sens_chans=cfg.get("sens_chans", 8),
         sens_pools=cfg.get("sens_pools", 4),
         use_dc=cfg.get("use_dc", True),
+        num_input_slices=cfg.get("num_input_slices", 1),
+        num_coils=cfg.get("num_coils", 15),
+        num_contrasts=cfg.get("num_contrasts", 1),
     )
 
 
-def build_dataset(cfg: dict, data_path: str, split_csv: str, split: str) -> FastMRIKneeDataset:
-    return FastMRIKneeDataset(
+def build_dataset(cfg: dict, data_path: str, split_csv: str, split: str):
+    common_kwargs = dict(
         data_path=data_path,
         split_csv=split_csv,
         split=split,
@@ -63,23 +72,45 @@ def build_dataset(cfg: dict, data_path: str, split_csv: str, split: str) -> Fast
         accelerations=cfg.get("accelerations", [4]),
         use_seed=(split != "train"),
     )
+    dataset_type = cfg.get("dataset_type", "single")
+    if dataset_type == "multislice":
+        return MultiSliceDataset(**common_kwargs)
+    elif dataset_type == "paired_contrast":
+        return PairedContrastDataset(**common_kwargs)
+    else:
+        return FastMRIKneeDataset(**common_kwargs)
 
 
-def train_epoch(model, loader, optimizer, loss_fn, device, grad_accum_steps=1):
+def train_epoch(model, loader, optimizer, loss_fn, device, grad_accum_steps=1,
+                paired=False):
     model.train()
     total_loss = 0.0
     optimizer.zero_grad()
     for step, batch in enumerate(loader):
-        masked_kspace, mask, target, max_values, _, _, num_lf = batch
-        masked_kspace = masked_kspace.to(device)
-        mask = mask.to(device)
-        target = target.to(device)
+        if paired:
+            (masked_kspace, mask, target_pd, target_pdfs,
+             max_values, _, _, _, num_lf) = batch
+            masked_kspace = masked_kspace.to(device)
+            mask = mask.to(device)
+            target_pd = target_pd.to(device)
+            target_pdfs = target_pdfs.to(device)
 
-        output = model(masked_kspace, mask, num_low_frequencies=int(num_lf[0]))
-        loss = loss_fn(
-            output, target,
-            max_value=torch.tensor(max_values, dtype=output.dtype, device=device),
-        )
+            outputs = model(masked_kspace, mask, num_low_frequencies=int(num_lf[0]))
+            mv = torch.tensor(max_values, dtype=outputs[0].dtype, device=device)
+            loss = 0.5 * (loss_fn(outputs[0], target_pd, max_value=mv) +
+                          loss_fn(outputs[1], target_pdfs, max_value=mv))
+        else:
+            masked_kspace, mask, target, max_values, _, _, num_lf = batch
+            masked_kspace = masked_kspace.to(device)
+            mask = mask.to(device)
+            target = target.to(device)
+
+            output = model(masked_kspace, mask, num_low_frequencies=int(num_lf[0]))
+            loss = loss_fn(
+                output, target,
+                max_value=torch.tensor(max_values, dtype=output.dtype, device=device),
+            )
+
         loss = loss / grad_accum_steps
         loss.backward()
 
@@ -97,23 +128,41 @@ SKIP_SLICES = 4  # Skip first N slices per volume (noisy edge slices)
 
 
 @torch.no_grad()
-def val_epoch(model, loader, device):
+def val_epoch(model, loader, device, paired=False):
     model.eval()
     ssim_total = 0.0
     n = 0
     for batch in loader:
-        masked_kspace, mask, target, max_values, _, slice_nums, num_lf = batch
-        masked_kspace = masked_kspace.to(device)
-        mask = mask.to(device)
-        target = target.to(device)
+        if paired:
+            (masked_kspace, mask, target_pd, target_pdfs,
+             max_values, _, _, slice_nums, num_lf) = batch
+            masked_kspace = masked_kspace.to(device)
+            mask = mask.to(device)
+            target_pd = target_pd.to(device)
+            target_pdfs = target_pdfs.to(device)
 
-        output = model(masked_kspace, mask, num_low_frequencies=int(num_lf[0]))
+            outputs = model(masked_kspace, mask, num_low_frequencies=int(num_lf[0]))
 
-        for i in range(output.shape[0]):
-            if slice_nums[i] < SKIP_SLICES:
-                continue
-            ssim_total += ssim_metric(output[i], target[i], max_value=max_values[i])
-            n += 1
+            for i in range(outputs[0].shape[0]):
+                if slice_nums[i] < SKIP_SLICES:
+                    continue
+                ssim_pd = ssim_metric(outputs[0][i], target_pd[i], max_value=max_values[i])
+                ssim_pdfs = ssim_metric(outputs[1][i], target_pdfs[i], max_value=max_values[i])
+                ssim_total += 0.5 * (ssim_pd + ssim_pdfs)
+                n += 1
+        else:
+            masked_kspace, mask, target, max_values, _, slice_nums, num_lf = batch
+            masked_kspace = masked_kspace.to(device)
+            mask = mask.to(device)
+            target = target.to(device)
+
+            output = model(masked_kspace, mask, num_low_frequencies=int(num_lf[0]))
+
+            for i in range(output.shape[0]):
+                if slice_nums[i] < SKIP_SLICES:
+                    continue
+                ssim_total += ssim_metric(output[i], target[i], max_value=max_values[i])
+                n += 1
 
     return ssim_total / max(n, 1)
 
@@ -153,11 +202,15 @@ def main():
     if args.epochs is not None:
         cfg["epochs"] = args.epochs
 
+    paired = cfg.get("dataset_type") == "paired_contrast"
+    cfn = paired_collate_fn if paired else collate_fn
+
     train_ds = build_dataset(cfg, args.data_path, args.split_csv, "train")
     val_ds   = build_dataset(cfg, args.data_path, args.split_csv, "val")
 
     if rank == 0:
-        print(f"Train: {len(train_ds)} slices | Val: {len(val_ds)} slices")
+        dtype = cfg.get("dataset_type", "single")
+        print(f"Train: {len(train_ds)} slices | Val: {len(val_ds)} slices | dataset: {dtype}")
 
     train_sampler = DistributedSampler(train_ds, shuffle=True) if distributed else None
     val_sampler = DistributedSampler(val_ds, shuffle=False) if distributed else None
@@ -168,7 +221,7 @@ def main():
         shuffle=(train_sampler is None),
         sampler=train_sampler,
         num_workers=4,
-        collate_fn=collate_fn,
+        collate_fn=cfn,
         pin_memory=True,
     )
     val_loader = DataLoader(
@@ -177,7 +230,7 @@ def main():
         shuffle=False,
         sampler=val_sampler,
         num_workers=2,
-        collate_fn=collate_fn,
+        collate_fn=cfn,
         pin_memory=True,
     )
 
@@ -225,8 +278,9 @@ def main():
         if train_sampler is not None:
             train_sampler.set_epoch(epoch)
 
-        train_loss = train_epoch(model, train_loader, optimizer, loss_fn, device, grad_accum)
-        val_ssim   = val_epoch(model, val_loader, device)
+        train_loss = train_epoch(model, train_loader, optimizer, loss_fn, device, grad_accum,
+                                  paired=paired)
+        val_ssim   = val_epoch(model, val_loader, device, paired=paired)
 
         if distributed:
             val_ssim_t = torch.tensor(val_ssim, device=device)

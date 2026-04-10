@@ -2,7 +2,10 @@
 
 ## What this project is
 
-A teaching lab for NYU students on learned MRI reconstruction using a simplified End-to-End VarNet on the fastMRI multicoil knee dataset. Self-contained (no fastMRI package dependency). The main deliverable is a Jupyter notebook (`notebooks/Lab1_VarNet.ipynb`) that walks students through data exploration, inference, ablations, and a training homework.
+A teaching lab for NYU students on learned MRI reconstruction using a simplified End-to-End VarNet on the fastMRI multicoil knee dataset. Self-contained (no fastMRI package dependency).
+
+- **Lab 1** (`notebooks/Lab1_VarNet.ipynb`): Data exploration, single-slice inference, DC ablation, extreme acceleration, equispaced-vs-random homework.
+- **Lab 2** (`notebooks/Lab2_AdvancedVarNet.ipynb`): Multi-acceleration (4x/5x/6x), neighbouring-slice reconstruction, joint PD+PDFS contrast reconstruction, SSIM comparison across all variants.
 
 ## Environment
 
@@ -25,13 +28,14 @@ A teaching lab for NYU students on learned MRI reconstruction using a simplified
 ```
 models/varnet.py       # SimpleVarNet, VarNetBlock, SensitivityModel
 models/unet.py         # U-Net and NormUnet
-utils/data.py          # FastMRIKneeDataset + DataLoader collate
+utils/data.py          # FastMRIKneeDataset, MultiSliceDataset, PairedContrastDataset
 utils/transforms.py    # FFT, k-space masking, complex math
 utils/metrics.py       # SSIM loss and metric
-scripts/train.py       # Training script (homework)
+scripts/train.py       # Training script (all model variants)
 scripts/eval.py        # Standalone evaluation (test/val SSIM + figures)
 configs/*.yaml         # Training configs (mask type, cascades, lr, etc.)
-notebooks/Lab1_VarNet.ipynb  # Main lab notebook (start here)
+notebooks/Lab1_VarNet.ipynb      # Lab 1: intro to VarNet (start here)
+notebooks/Lab2_AdvancedVarNet.ipynb  # Lab 2: multi-slice, multi-contrast, multi-accel
 submit_train.sh        # SLURM sbatch script for training
 ```
 
@@ -47,9 +51,17 @@ jupyter notebook --no-browser --port=8888 --ip=0.0.0.0
 
 ### Train a model
 ```bash
+# Single-slice baseline:
 sbatch submit_train.sh
-# or directly:
-python scripts/train.py --config configs/random_4x.yaml \
+
+# Multi-slice (3 adjacent slices, 4x/5x/6x):
+sbatch submit_multislice.sh
+
+# Joint contrast (PD+PDFS, 3 slices each, 4x/5x/6x):
+sbatch submit_joint_contrast.sh
+
+# Or directly:
+python scripts/train.py --config configs/<config>.yaml \
     --data_path /gpfs/scratch/johnsp23/DLrecon_lab1/data/knee \
     --split_csv /gpfs/scratch/johnsp23/DLrecon_lab1/data/fastMRI_paired_knee.csv \
     --output_dir runs/<experiment_name>
@@ -63,6 +75,9 @@ python scripts/train.py --config configs/random_4x.yaml \
 - The model center-crops from 640x368 to 320x320 before RSS coil combination.
 - SSIM is the primary evaluation metric (both as loss and for reporting).
 - Pretrained models use 12 cascades, 24 channels, 4 pools.
+- Multi-acceleration configs list multiple `accelerations` / `center_fractions` pairs; the mask function randomly picks one per sample during training.
+- Multi-slice models stack 3 adjacent slices along the coil dimension (15 coils x 3 = 45 channels) and reconstruct only the center slice.
+- Joint-contrast models pair PD and PDFS volumes from the same exam using the `pd`/`pdfs` columns in the split CSV.
 
 ## Git
 

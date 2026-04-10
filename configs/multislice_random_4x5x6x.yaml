@@ -1,0 +1,25 @@
+# Multi-slice VarNet: 3 adjacent slices, reconstruct center slice
+# Jointly trained at 4x/5x/6x random undersampling
+
+mask_type: random
+center_fractions: [0.08, 0.08, 0.08]
+accelerations: [4, 5, 6]
+
+num_cascades: 12
+chans: 24
+pools: 4
+sens_chans: 8
+sens_pools: 4
+use_dc: true
+
+num_input_slices: 3
+num_coils: 15
+num_contrasts: 1
+dataset_type: multislice
+
+epochs: 50
+batch_size: 1
+lr: 3.0e-4
+lr_step_size: 40
+lr_gamma: 0.1
+seed: 42
