@@ -4,56 +4,42 @@ A teaching lab on learned MRI reconstruction using a simplified [End-to-End VarN
 
 ## Quick start
 
-You will need **two terminal windows** on your laptop.
+We'll launch Jupyter on a GPU node through **NYU Open OnDemand** — no SSH tunnels required.
 
-### Terminal 1 — SSH into the cluster and get a GPU
+### 1. Pull the latest code
+
+If you cloned this repo for Lab 1, you only have the Lab 1 version locally. Pull the Lab 2 updates first:
 
 ```bash
-# Step 1: SSH into BigPurple
 ssh YOUR_KID@bigpurple.nyumc.org
+cd ~/dl-mri-recon-lab
+git pull origin main
+```
 
-# Step 2: Clone the repo (first time only)
+If you've never cloned the repo:
+```bash
+ssh YOUR_KID@bigpurple.nyumc.org
 module load git
 git clone https://github.com/pjohnson519/dl-mri-recon-lab.git
-cd dl-mri-recon-lab
+```
 
-# Step 3: Get an interactive GPU node
-# Option A — a100_dev (default for most students):
-srun --partition=a100_dev --gres=gpu:1 --cpus-per-task=8 --mem=32G --time=3:00:00 --pty /bin/bash
+### 2. Launch a Jupyter session via Open OnDemand
 
-# Option B — radiology partition (if you have access):
-srun --partition=radiology --gres=gpu:a100:1 --cpus-per-task=8 --mem=32G --time=3:00:00 --pty /bin/bash
+1. In your browser, go to **https://ondemand.hpc.nyumc.org**
+2. Log in with your KID
+3. Start an **Interactive App → Jupyter** session with a GPU (see screenshots in lab handout)
+4. Once the session is running, click **Connect to Jupyter**
 
-# Step 4: Note which compute node you landed on
-hostname
-# e.g. a100-4003
+### 3. Open the notebook
 
-# Step 5: Activate the environment and launch Jupyter
+In the Jupyter file browser:
+- Navigate to `dl-mri-recon-lab/notebooks/`
+- Open `Lab2_AdvancedVarNet.ipynb` (Lab 1 is also there as a reference)
+
+When prompted for a kernel, choose the `varnet` environment. If it's not listed, open a terminal in Jupyter and run:
+```bash
 conda activate /gpfs/scratch/johnsp23/DLrecon_lab1/envs/varnet
-cd ~/dl-mri-recon-lab
-jupyter notebook --no-browser --port=8888 --ip=0.0.0.0
-
-
-Jupyter will print a URL like:
-
-http://127.0.0.1:8888/?token=abc123def456...
-
-Keep this terminal open — copy that URL.
-
-### Terminal 2 — SSH tunnel from your laptop
-
-Open a **new terminal on your laptop** (not on the cluster) and create an SSH tunnel:
-
-
-ssh -N -L 8888:COMPUTE_NODE:8888 YOUR_KID@bigpurple.nyumc.org
-
-
-Replace `COMPUTE_NODE` with the hostname from Step 4 (e.g. `a100-4003`).
-
-### Open the notebook
-
-Open a browser on your laptop and paste the URL from Jupyter (the one with the token).
-Navigate to `notebooks/Lab1_VarNet.ipynb` and you're ready to go.
+```
 
 Run cells with **Shift+Enter**.
 
@@ -78,18 +64,16 @@ dl-mri-recon-lab/
 │   ├── varnet.py         # SimpleVarNet, VarNetBlock, SensitivityModel
 │   └── unet.py           # U-Net and NormUnet
 ├── utils/
-│   ├── data.py           # FastMRIKneeDataset + DataLoader collate
+│   ├── data.py           # FastMRIKneeDataset, MultiSliceDataset, PairedContrastDataset
 │   ├── transforms.py     # FFT, k-space masking, complex math
 │   └── metrics.py        # SSIM loss and metric
 ├── notebooks/
-│   └── Lab1_VarNet.ipynb # <-- start here
+│   ├── Lab1_VarNet.ipynb         # Lab 1: intro to VarNet
+│   └── Lab2_AdvancedVarNet.ipynb # Lab 2: multi-slice, multi-contrast, multi-accel
 ├── scripts/
-│   ├── train.py          # Training script (for homework)
+│   ├── train.py          # Training script (all model variants)
 │   └── eval.py           # Standalone evaluation script
-├── configs/
-│   ├── random_4x.yaml
-│   ├── random_4x_nodc.yaml
-│   └── random_20x.yaml
+├── configs/              # YAML configs for each model variant
 └── environment.yml       # Conda env spec (if you need to recreate)
 ```
 
@@ -111,44 +95,29 @@ SimpleVarNet(num_cascades=12, chans=24, pools=4, use_dc=True)
 2. Each cascade: reduce to single-channel image → U-Net denoises → expand back to multi-coil k-space → soft data consistency step
 3. IFFT → center-crop (640×368 → 320×320) → RSS coil combination
 
-Setting `use_dc=False` freezes all DC weights at 0, converting the model to a pure image-processing pipeline.
+For multi-slice and joint-contrast variants, sensitivity maps are estimated per coil-group (one group per slice per contrast), and the cascade U-Net sees one image per group so it can learn cross-slice / cross-contrast features.
 
-## Lab notebook parts
+## Lab notebooks
 
-| Part | Topic | What you do |
-|------|-------|-------------|
-| 0 | Setup & Data Exploration | Load k-space, visualize magnitude/phase/PDF, compare masks |
-| 1 | Random 4x Inference | Run pretrained model with random and equispaced masks, measure SSIM |
-| 2 | No Data Consistency | Ablate DC module, compare error patterns |
-| 3 | 20x Acceleration | Extreme acceleration, examine pathology preservation |
-| HW | Train Your Own Model | Train equispaced 4x model, compare to random-trained |
+### Lab 1 — Intro to VarNet (`Lab1_VarNet.ipynb`)
 
-## Homework
+| Part | Topic |
+|------|-------|
+| 0 | Setup & data exploration |
+| 1 | Random 4x inference |
+| 2 | No data consistency ablation |
+| 3 | 20x acceleration |
+| HW | Train your own equispaced 4x model |
 
-**Option A:** Create `configs/equispaced_4x.yaml`, train with `scripts/train.py`, evaluate with `scripts/eval.py`, and compare SSIM to the random-trained model on equispaced masks.
+### Lab 2 — Advanced VarNet (`Lab2_AdvancedVarNet.ipynb`)
 
-```bash
-# Evaluate your trained model on the test set:
-python scripts/eval.py --checkpoint runs/equi4x/best.pt \
-    --data_path /gpfs/scratch/johnsp23/DLrecon_lab1/data/knee \
-    --split_csv /gpfs/scratch/johnsp23/DLrecon_lab1/data/fastMRI_paired_knee.csv
-
-# Compare: evaluate with a different mask type than what you trained on:
-python scripts/eval.py --checkpoint runs/equi4x/best.pt \
-    --data_path /gpfs/scratch/johnsp23/DLrecon_lab1/data/knee \
-    --split_csv /gpfs/scratch/johnsp23/DLrecon_lab1/data/fastMRI_paired_knee.csv \
-    --mask_type random
-
-# Save example figures:
-python scripts/eval.py --checkpoint runs/equi4x/best.pt \
-    --data_path /gpfs/scratch/johnsp23/DLrecon_lab1/data/knee \
-    --split_csv /gpfs/scratch/johnsp23/DLrecon_lab1/data/fastMRI_paired_knee.csv \
-    --save_figures figures/equi4x
-```
-
-**Option B (Advanced):** Extend the model to 3D using slice-unique random masks or shifted equispaced masks.
-
-See the notebook for detailed instructions and SLURM submission templates.
+| Part | Topic |
+|------|-------|
+| 1 | Equispaced vs random mask training |
+| 2 | Multi-acceleration (4x/5x/6x) masks |
+| 3 | Neighbouring-slice reconstruction |
+| 4 | Joint PD + PDFS contrast reconstruction |
+| 5 | SSIM comparison across all models |
 
 ## Data format
 
