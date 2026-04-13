@@ -42,7 +42,8 @@ def _batched_mask_center(
         return mask
     mask = torch.zeros_like(x)
     for i, (start, end) in enumerate(zip(mask_from, mask_to)):
-        mask[i, :, :, start:end] = x[i, :, :, start:end]
+        s, e = int(start), int(end)
+        mask[i, :, :, s:e] = x[i, :, :, s:e]
     return mask
 
 
