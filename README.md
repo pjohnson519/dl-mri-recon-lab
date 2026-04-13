@@ -4,7 +4,7 @@ A teaching lab on learned MRI reconstruction using a simplified [End-to-End VarN
 
 ## Quick start
 
-We'll launch Jupyter on a GPU node through **NYU Open OnDemand** — no SSH tunnels required.
+We'll launch Jupyter on a GPU node through **NYU HPC OnDemand** — no SSH tunnels required.
 
 ### 1. Pull the latest code
 
@@ -23,7 +23,7 @@ module load git
 git clone https://github.com/pjohnson519/dl-mri-recon-lab.git
 ```
 
-### 2. Launch a Jupyter session via Open OnDemand
+### 2. Launch a Jupyter session via HPC OnDemand
 
 1. In your browser, go to **https://ondemand.hpc.nyumc.org**
 2. Log in with your KID
@@ -36,11 +36,7 @@ In the Jupyter file browser:
 - Navigate to `dl-mri-recon-lab/notebooks/`
 - Open `Lab2_AdvancedVarNet.ipynb` (Lab 1 is also there as a reference)
 
-When prompted for a kernel, choose the `varnet` environment. If it's not listed, open a terminal in Jupyter and run:
-```bash
-conda activate /gpfs/scratch/johnsp23/DLrecon_lab1/envs/varnet
 ```
-
 Run cells with **Shift+Enter**.
 
 ## Shared data (scratch)
