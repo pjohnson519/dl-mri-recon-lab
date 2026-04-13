@@ -51,6 +51,9 @@ All large files live on scratch — nothing needs to be downloaded:
 | `/gpfs/scratch/johnsp23/DLrecon_lab1/pretrained/varnet_random4x_noDC.pt` | 4x random, no data consistency |
 | `/gpfs/scratch/johnsp23/DLrecon_lab1/pretrained/varnet_random20x.pt` | 20x random model |
 | `/gpfs/scratch/johnsp23/DLrecon_lab1/pretrained/varnet_equispaced4x.pt` | 4x equispaced model (Lab 2 fallback if you don't have your own from Lab 1) |
+| `/gpfs/scratch/johnsp23/DLrecon_lab1/pretrained/varnet_baseline_4x5x6x.pt` | Lab 2: single-slice baseline jointly trained at 4x/5x/6x |
+| `/gpfs/scratch/johnsp23/DLrecon_lab1/pretrained/varnet_multislice_4x5x6x.pt` | Lab 2: 3-slice multi-slice model jointly trained at 4x/5x/6x |
+| `/gpfs/scratch/johnsp23/DLrecon_lab1/pretrained/varnet_joint_contrast_4x5x6x.pt` | Lab 2: joint PD+PDFS contrast model jointly trained at 4x/5x/6x |
 | `/gpfs/scratch/johnsp23/DLrecon_lab1/envs/varnet/` | Pre-built conda environment |
 
 ## Repository layout
