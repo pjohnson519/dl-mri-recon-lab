@@ -352,7 +352,6 @@ class PairedContrastDataset(Dataset):
         kspace = to_tensor(kspace)
         target_pd = torch.from_numpy(pd_target.astype(np.float32))
         target_pdfs = torch.from_numpy(pdfs_target.astype(np.float32))
-        scale = max(pd_max, pdfs_max)
 
         # Same mask for both contrasts
         mask_func = self._pick_mask_func()
@@ -360,7 +359,7 @@ class PairedContrastDataset(Dataset):
         masked_kspace, mask, num_low_freqs = apply_mask(kspace, mask_func, seed=seed)
 
         return (masked_kspace, mask, target_pd, target_pdfs,
-                scale, pd_fname, pdfs_fname, slice_num, num_low_freqs)
+                pd_max, pdfs_max, pd_fname, pdfs_fname, slice_num, num_low_freqs)
 
 
 def collate_fn(batch):
@@ -380,13 +379,14 @@ def collate_fn(batch):
 def paired_collate_fn(batch):
     """Stack batch items into tensors (paired-contrast dataset)."""
     (masked_kspaces, masks, targets_pd, targets_pdfs,
-     scales, pd_fnames, pdfs_fnames, slice_nums, nlfs) = zip(*batch)
+     pd_maxes, pdfs_maxes, pd_fnames, pdfs_fnames, slice_nums, nlfs) = zip(*batch)
     return (
         torch.stack(masked_kspaces),
         torch.stack(masks),
         torch.stack(targets_pd),
         torch.stack(targets_pdfs),
-        list(scales),
+        list(pd_maxes),
+        list(pdfs_maxes),
         list(pd_fnames),
         list(pdfs_fnames),
         list(slice_nums),

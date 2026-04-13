@@ -89,16 +89,17 @@ def train_epoch(model, loader, optimizer, loss_fn, device, grad_accum_steps=1,
     for step, batch in enumerate(loader):
         if paired:
             (masked_kspace, mask, target_pd, target_pdfs,
-             max_values, _, _, _, num_lf) = batch
+             pd_maxes, pdfs_maxes, _, _, _, num_lf) = batch
             masked_kspace = masked_kspace.to(device)
             mask = mask.to(device)
             target_pd = target_pd.to(device)
             target_pdfs = target_pdfs.to(device)
 
             outputs = model(masked_kspace, mask, num_low_frequencies=int(num_lf[0]))
-            mv = torch.tensor(max_values, dtype=outputs[0].dtype, device=device)
-            loss = 0.5 * (loss_fn(outputs[0], target_pd, max_value=mv) +
-                          loss_fn(outputs[1], target_pdfs, max_value=mv))
+            mv_pd = torch.tensor(pd_maxes, dtype=outputs[0].dtype, device=device)
+            mv_pdfs = torch.tensor(pdfs_maxes, dtype=outputs[0].dtype, device=device)
+            loss = 0.5 * (loss_fn(outputs[0], target_pd, max_value=mv_pd) +
+                          loss_fn(outputs[1], target_pdfs, max_value=mv_pdfs))
         else:
             masked_kspace, mask, target, max_values, _, _, num_lf = batch
             masked_kspace = masked_kspace.to(device)
@@ -135,7 +136,7 @@ def val_epoch(model, loader, device, paired=False):
     for batch in loader:
         if paired:
             (masked_kspace, mask, target_pd, target_pdfs,
-             max_values, _, _, slice_nums, num_lf) = batch
+             pd_maxes, pdfs_maxes, _, _, slice_nums, num_lf) = batch
             masked_kspace = masked_kspace.to(device)
             mask = mask.to(device)
             target_pd = target_pd.to(device)
@@ -146,8 +147,8 @@ def val_epoch(model, loader, device, paired=False):
             for i in range(outputs[0].shape[0]):
                 if slice_nums[i] < SKIP_SLICES:
                     continue
-                ssim_pd = ssim_metric(outputs[0][i], target_pd[i], max_value=max_values[i])
-                ssim_pdfs = ssim_metric(outputs[1][i], target_pdfs[i], max_value=max_values[i])
+                ssim_pd = ssim_metric(outputs[0][i], target_pd[i], max_value=pd_maxes[i])
+                ssim_pdfs = ssim_metric(outputs[1][i], target_pdfs[i], max_value=pdfs_maxes[i])
                 ssim_total += 0.5 * (ssim_pd + ssim_pdfs)
                 n += 1
         else:
