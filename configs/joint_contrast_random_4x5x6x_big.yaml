@@ -1,0 +1,25 @@
+# Joint-contrast VarNet with larger U-Net capacity to exploit the 90-channel input.
+# 3 PD slices + 3 PDFS slices, 4x/5x/6x random undersampling.
+
+mask_type: random
+center_fractions: [0.08, 0.08, 0.08]
+accelerations: [4, 5, 6]
+
+num_cascades: 12
+chans: 48            # doubled (was 24) — more capacity for the 12-channel U-Net input
+pools: 4
+sens_chans: 16       # doubled (was 8) — sensitivity net sees 90 coils
+sens_pools: 4
+use_dc: true
+
+num_input_slices: 3
+num_coils: 15
+num_contrasts: 2
+dataset_type: paired_contrast
+
+epochs: 30           # reduced from 50 given time budget
+batch_size: 1
+lr: 3.0e-4
+lr_step_size: 20     # drop LR earlier (was 40) to match 30-epoch schedule
+lr_gamma: 0.1
+seed: 42
