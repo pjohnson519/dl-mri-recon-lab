@@ -92,7 +92,7 @@ class FastMRIKneeDataset(Dataset):
         df = pd.read_csv(split_csv)
         pdfs_files = df.loc[df["pdfs_split"] == split, "pdfs"].dropna().tolist()
         pd_files = df.loc[df["pd_split"] == split, "pd"].dropna().tolist()
-        split_files = list(set(pdfs_files + pd_files))
+        split_files = sorted(set(pdfs_files + pd_files))
 
         # Build (fname, slice_num) index
         self.examples: List[Tuple[str, int]] = []
@@ -188,7 +188,7 @@ class MultiSliceDataset(Dataset):
         df = pd.read_csv(split_csv)
         pdfs_files = df.loc[df["pdfs_split"] == split, "pdfs"].dropna().tolist()
         pd_files = df.loc[df["pd_split"] == split, "pd"].dropna().tolist()
-        split_files = list(set(pdfs_files + pd_files))
+        split_files = sorted(set(pdfs_files + pd_files))
 
         # Build (fname, slice_num, num_slices) index
         self.examples: List[Tuple[str, int, int]] = []
